@@ -17,7 +17,14 @@
 
 package org.apache.doris.load;
 
-import org.apache.doris.catalog.AggregateType;
+import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+import com.google.gson.Gson;
+import org.apache.commons.lang.StringUtils;
 import org.apache.doris.analysis.BinaryPredicate;
 import org.apache.doris.analysis.CancelLoadStmt;
 import org.apache.doris.analysis.ColumnSeparator;
@@ -31,6 +38,7 @@ import org.apache.doris.analysis.Predicate;
 import org.apache.doris.analysis.SlotRef;
 import org.apache.doris.backup.BlobStorage;
 import org.apache.doris.backup.Status;
+import org.apache.doris.catalog.AggregateType;
 import org.apache.doris.catalog.Catalog;
 import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.Database;
@@ -90,16 +98,6 @@ import org.apache.doris.transaction.TableCommitInfo;
 import org.apache.doris.transaction.TransactionState;
 import org.apache.doris.transaction.TransactionState.LoadJobSourceType;
 import org.apache.doris.transaction.TransactionStatus;
-
-import com.google.common.base.Joiner;
-import com.google.common.base.Preconditions;
-import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import com.google.gson.Gson;
-
-import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -266,6 +264,7 @@ public class Load {
         ColumnSeparator columnSeparator = null;
         List<String> hllColumnPairList = null;
         String lineDelimiter = null;
+        String formatType = null;
         if (params != null) {
             String specifiedPartitions = params.get(LoadStmt.KEY_IN_PARAM_PARTITIONS);
             if (!Strings.isNullOrEmpty(specifiedPartitions)) {
@@ -294,10 +293,11 @@ public class Load {
                 }
             }
             lineDelimiter = params.get(LoadStmt.KEY_IN_PARAM_LINE_DELIMITER);
+            formatType = params.get(LoadStmt.KEY_IN_PARAM_FORMAT_TYPE);
         }
 
         DataDescription dataDescription = new DataDescription(tableName, partitionNames, filePaths, columnNames,
-                                                              columnSeparator, false, null);
+                                                    columnSeparator, formatType, false, null);
         dataDescription.setLineDelimiter(lineDelimiter);
         dataDescription.setBeAddr(beAddr);
         // parse hll param pair
@@ -742,7 +742,7 @@ public class Load {
                 }
             }
 
-            // check hll 
+            // check hll
             for (Column column : tableSchema) {
                 if (column.getDataType() == PrimitiveType.HLL) {
                     if (assignColumnToFunction != null && !assignColumnToFunction.containsKey(column.getName())) {
@@ -1713,29 +1713,29 @@ public class Load {
             if (Strings.isNullOrEmpty(host)) {
                 throw new DdlException("mysql host is missing");
             }
-            
+
             int port = -1;
             try {
                 port = Integer.valueOf(properties.get("port"));
             } catch (NumberFormatException e) {
                 throw new DdlException("invalid mysql port: " + properties.get("port"));
             }
-            
+
             String user = properties.get("user");
             if (Strings.isNullOrEmpty(user)) {
                 throw new DdlException("mysql user name is missing");
             }
-            
+
             String db = properties.get("database");
             if (Strings.isNullOrEmpty(db)) {
                 throw new DdlException("mysql database is missing");
             }
-            
+
             String tbl = properties.get("table");
             if (Strings.isNullOrEmpty(tbl)) {
                 throw new DdlException("mysql table is missing");
             }
-            
+
             String pwd = Strings.nullToEmpty(properties.get("password"));
 
             MysqlLoadErrorHub.MysqlParam param = new MysqlLoadErrorHub.MysqlParam(host, port, user, pwd, db, tbl);
@@ -1763,15 +1763,15 @@ public class Load {
             if (!st.ok()) {
                 throw new DdlException("failed to visit path: " + path + ", err: " + st.getErrMsg());
             }
-            
+
             BrokerLoadErrorHub.BrokerParam param = new BrokerLoadErrorHub.BrokerParam(brokerName, path, properties);
             loadErrorHubParam = LoadErrorHub.Param.createBrokerParam(param);
         } else if (type.equalsIgnoreCase("null")) {
             loadErrorHubParam = LoadErrorHub.Param.createNullParam();
         }
-        
+
         Catalog.getInstance().getEditLog().logSetLoadErrorHub(loadErrorHubParam);
-        
+
         LOG.info("set load error hub info: {}", loadErrorHubParam);
     }
 
@@ -1969,7 +1969,7 @@ public class Load {
                 }
             }
         } else {
-            // in realtime load, does not exist a quorum finish stage, so that should remove job from pending queue and 
+            // in realtime load, does not exist a quorum finish stage, so that should remove job from pending queue and
             // loading queue at finish stage
             idToPendingLoadJob.remove(jobId);
             // for delete load job, it also in id to loading job
@@ -2096,7 +2096,7 @@ public class Load {
 
     // remove all db jobs from dbToLoadJobs and dbLabelToLoadJobs
     // only remove finished or cancelled job from idToLoadJob
-    // LoadChecker will update other state jobs to cancelled or finished, 
+    // LoadChecker will update other state jobs to cancelled or finished,
     //     and they will be removed by removeOldLoadJobs periodically
     public void removeDbLoadJob(long dbId) {
         writeLock();
@@ -2939,11 +2939,11 @@ public class Load {
                     // check replica version.
                     // here is a little bit confused. the main idea is
                     // 1. check if replica catch up the version
-                    // 2. if not catch up and this is pre check, make sure there will be right quorum finished load jobs 
+                    // 2. if not catch up and this is pre check, make sure there will be right quorum finished load jobs
                     //    to fill the version gap between 'replica committed version' and 'partition committed version'.
                     // 3. if not catch up and this is after check
                     //      1) if diff version == 1, some sync delete task may failed. add async delete task.
-                    //      2) if diff version > 1, make sure there will be right quorum finished load jobs 
+                    //      2) if diff version > 1, make sure there will be right quorum finished load jobs
                     //         to fill the version gap between 'replica committed version' and 'delete version - 1'.
                     // if ok, add async delete task.
                     if (!replica.checkVersionCatchUp(checkVersion, checkVersionHash)) {
@@ -3140,7 +3140,7 @@ public class Load {
                     partitionName = olapTable.getName();
                 }
             }
-            
+
             Partition partition = olapTable.getPartition(partitionName);
             if (partition == null) {
                 throw new DdlException("Partition does not exist. name: " + partitionName);

@@ -93,6 +93,8 @@ set(EXEC_FILES
     new_partitioned_aggregation_node_ir.cc
     local_file_writer.cpp
     broker_writer.cpp
+    parquet_scanner.cpp
+    parquet_reader.cpp
 )
 
 if(EXISTS "${BASE_DIR}/src/exec/kudu_util.cpp")

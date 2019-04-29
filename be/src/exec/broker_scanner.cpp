@@ -42,7 +42,7 @@ BrokerScanner::BrokerScanner(RuntimeState* state,
                              const TBrokerScanRangeParams& params, 
                              const std::vector<TBrokerRangeDesc>& ranges,
                              const std::vector<TNetworkAddress>& broker_addresses,
-                             BrokerScanCounter* counter) : 
+                             ScannerCounter* counter) :
         _state(state),
         _profile(profile),
         _params(params),
