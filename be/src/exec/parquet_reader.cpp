@@ -292,7 +292,7 @@ Status ParquetReaderWrap::read(Tuple* tuple, const std::vector<SlotDescriptor*>&
                     if (uint32_array->IsNull(_current_line_of_group)) {
                         set_filed_null(tuple, slot_desc);
                     } else {
-                        int16_t value = uint32_array->Value(_current_line_of_group);
+                        uint32_t value = uint32_array->Value(_current_line_of_group);
                         wbtyes = sprintf((char*)tmp_buf, "%u", value);
                         fill_solt(tuple, slot_desc, mem_pool, tmp_buf, wbtyes);
                     }
@@ -303,7 +303,7 @@ Status ParquetReaderWrap::read(Tuple* tuple, const std::vector<SlotDescriptor*>&
                     if (int32_array->IsNull(_current_line_of_group)) {
                         set_filed_null(tuple, slot_desc);
                     } else {
-                        int16_t value = int32_array->Value(_current_line_of_group);
+                        int32_t value = int32_array->Value(_current_line_of_group);
                         wbtyes = sprintf((char*)tmp_buf, "%d", value);
                         fill_solt(tuple, slot_desc, mem_pool, tmp_buf, wbtyes);
                     }
